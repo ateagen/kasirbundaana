@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin POS</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    body { margin:0; font-family:sans-serif; background:#e0f7ff; }
+    header { background:#0288d1; color:white; padding:10px; text-align:center; }
+    .container { padding:20px; }
+    h2 { color:#01579b; margin-top:20px; }
+    table { width:100%; border-collapse:collapse; margin-top:10px; font-size:14px; }
+    th, td { border:1px solid #ccc; padding:6px; text-align:center; }
+    th { background:#b3e5fc; }
+    button { background:#0288d1; color:white; border:none; padding:6px 12px; border-radius:6px; cursor:pointer; }
+    button:hover { background:#0277bd; }
+    input, select { padding:6px; margin:4px 0; border:1px solid #ccc; border-radius:6px; }
+    .overlay { position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); display:none; align-items:center; justify-content:center; }
+    .popup { background:white; padding:20px; border-radius:10px; width:320px; max-width:90%; }
+    .popup h3 { margin-top:0; }
+    .hidden { display:none; }
+    #loading { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(255,255,255,0.7); align-items:center; justify-content:center; font-size:20px; color:#0288d1; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Admin POS</h1>
+    <button onclick="logout()">Kembali</button>
+  </header>
+
+  <div id="loading">⏳ Loading...</div>
+
+  <div class="container hidden" id="dashboard">
+
+    <!-- Tambah Menu -->
+    <h2>Manajemen Menu</h2>
+    <form id="form-menu">
+      <input type="text" id="menu-nama" placeholder="Nama Menu" required>
+      <input type="number" id="menu-harga" placeholder="Harga" required>
+      <select id="menu-kategori">
+        <option value="Makanan">Makanan</option>
+        <option value="Minuman">Minuman</option>
+        <option value="Cemilan">Cemilan</option>
+      </select>
+      <button type="submit">Tambah Menu</button>
+    </form>
+    <table>
+      <thead>
+        <tr><th>Nama</th><th>Harga</th><th>Kategori</th><th>Aksi</th></tr>
+      </thead>
+      <tbody id="tabel-menu"></tbody>
+    </table>
+
+    <!-- Rekap Harian -->
+    <h2>Rekap Harian</h2>
+    <input type="date" id="filter-tanggal">
+    <table>
+      <thead>
+        <tr>
+          <th>Tanggal</th>
+          <th>Total Penjualan</th>
+          <th>Total Pengeluaran</th>
+          <th>Kas Akhir</th>
+        </tr>
+      </thead>
+      <tbody id="tabel-total"></tbody>
+    </table>
+
+    <!-- Detail Transaksi -->
+    <h2>Detail Transaksi</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Tanggal</th><th>Kasir</th><th>Menu/Keterangan</th>
+          <th>Jumlah</th><th>Harga</th><th>Subtotal</th><th>Jenis</th><th>Aksi</th>
+        </tr>
+      </thead>
+      <tbody id="tabel-detail"></tbody>
+    </table>
+
+    <!-- Tombol Hapus Data -->
+    <h2>Manajemen Data</h2>
+    <button onclick="hapus3BulanConfirm()">Hapus Data > 3 Bulan</button>
+    <button onclick="hapusSemuaConfirm()">Hapus Semua Transaksi</button>
+  </div>
+
+  <!-- Popup Login -->
+  <div class="overlay" id="login-overlay">
+    <div class="popup">
+      <h3>Login Admin</h3>
+      <input type="text" id="login-user" placeholder="Username"><br>
+      <input type="password" id="login-pass" placeholder="Password"><br>
+      <button onclick="login()">Login</button>
+    </div>
+  </div>
+
+  <!-- Popup Konfirmasi -->
+  <div class="overlay" id="confirm-overlay">
+    <div class="popup">
+      <h3 id="confirm-text">Yakin?</h3>
+      <div id="extra-inputs"></div>
+      <button id="confirm-yes">Ya</button>
+      <button onclick="closeConfirm()">Batal</button>
+    </div>
+  </div>
+
+  <script>
+    // ========== KONFIGURASI SUPABASE ==========
+    const SUPABASE_URL = "https://xfountfixucihehzirzw.supabase.co";
+    const SUPABASE_KEY = "sb_publishable_7CQf_hkoibC_I0lcBCe01Q_xF9XPpTZ";
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    let tanggalAktif = new Date().toISOString().slice(0,10);
+    let confirmCallback = null;
+
+    // ========== LOADING ==========
+    function showLoading(){ document.getElementById("loading").style.display="flex"; }
+    function hideLoading(){ document.getElementById("loading").style.display="none"; }
+
+    // ========== LOGIN ==========
+    async function login() {
+      const u = document.getElementById("login-user").value;
+      const p = document.getElementById("login-pass").value;
+      showLoading();
+      const { data, error } = await supabase.from("admin").select("*").eq("username",u).eq("password",p).single();
+      hideLoading();
+      if (data) {
+        document.getElementById("login-overlay").style.display="none";
+        document.getElementById("dashboard").classList.remove("hidden");
+        loadMenu();
+        loadTotal(tanggalAktif);
+        loadDetail(tanggalAktif);
+        document.getElementById("filter-tanggal").value = tanggalAktif;
+      } else {
+        alert("Login gagal!");
+      }
+    }
+    function logout(){ location.href="index.html"; }
+
+    // ========== MENU ==========
+    async function loadMenu(){
+      showLoading();
+      const { data } = await supabase.from("menu").select("*").order("created_at",{ascending:false});
+      hideLoading();
+      const tbody=document.getElementById("tabel-menu"); tbody.innerHTML="";
+      data.forEach(m=>{
+        const tr=document.createElement("tr");
+        tr.innerHTML=`
+          <td>${m.nama}</td>
+          <td>Rp ${Number(m.harga).toLocaleString()}</td>
+          <td>${m.kategori}</td>
+          <td><button data-id="${m.id}" class="hapus-menu">Hapus</button></td>`;
+        tr.querySelector(".hapus-menu").addEventListener("click",()=>{
+          showConfirm("Hapus menu ini?", async ()=>{
+            showLoading();
+            await supabase.from("menu").delete().eq("id",m.id);
+            hideLoading();
+            loadMenu();
+          });
+        });
+        tbody.appendChild(tr);
+      });
+    }
+    document.getElementById("form-menu").addEventListener("submit",async(e)=>{
+      e.preventDefault();
+      const nama=document.getElementById("menu-nama").value;
+      const harga=parseInt(document.getElementById("menu-harga").value);
+      const kategori=document.getElementById("menu-kategori").value;
+      showLoading();
+      await supabase.from("menu").insert([{nama,harga,kategori}]);
+      hideLoading();
+      e.target.reset();
+      loadMenu();
+    });
+
+    // ========== TOTAL ==========
+    async function loadTotal(tanggal){
+      showLoading();
+      const { data } = await supabase.from("detail").select("*").eq("tanggal",tanggal);
+      hideLoading();
+      let jual=0, keluar=0;
+      data.forEach(t=>{ if(t.jenis==="jual") jual+=Number(t.subtotal); else keluar+=Number(t.subtotal); });
+      document.getElementById("tabel-total").innerHTML=`
+        <tr>
+          <td>${tanggal}</td>
+          <td>Rp ${jual.toLocaleString()}</td>
+          <td>Rp ${keluar.toLocaleString()}</td>
+          <td>Rp ${(jual-keluar).toLocaleString()}</td>
+        </tr>`;
+    }
+    document.getElementById("filter-tanggal").addEventListener("change",(e)=>{
+      tanggalAktif=e.target.value;
+      loadTotal(tanggalAktif);
+      loadDetail(tanggalAktif);
+    });
+
+    // ========== DETAIL ==========
+    async function loadDetail(tanggal){
+      showLoading();
+      const { data } = await supabase.from("detail").select("*").eq("tanggal",tanggal).order("created_at",{ascending:false});
+      hideLoading();
+      const tbody=document.getElementById("tabel-detail"); tbody.innerHTML="";
+      data.forEach(t=>{
+        const tr=document.createElement("tr");
+        tr.innerHTML=`
+          <td>${t.tanggal}</td>
+          <td>${t.kasir}</td>
+          <td>${t.menu}</td>
+          <td>${t.jumlah}</td>
+          <td>Rp ${Number(t.harga).toLocaleString()}</td>
+          <td>Rp ${Number(t.subtotal).toLocaleString()}</td>
+          <td>${t.jenis}</td>
+          <td><button class="hapus-detail">Hapus</button></td>`;
+        tr.querySelector(".hapus-detail").addEventListener("click",()=>{
+          showConfirm("Hapus transaksi ini?", async ()=>{
+            showLoading();
+            await supabase.from("detail").delete().eq("id",t.id);
+            hideLoading();
+            loadTotal(tanggalAktif);
+            loadDetail(tanggalAktif);
+          });
+        });
+        tbody.appendChild(tr);
+      });
+    }
+
+    // ========== HAPUS DATA ==========
+    function hapus3BulanConfirm(){
+      showConfirm("Hapus semua data > 3 bulan?", async ()=>{
+        showLoading();
+        const cutoff=new Date(); cutoff.setMonth(cutoff.getMonth()-3);
+        await supabase.from("detail").delete().lt("tanggal",cutoff.toISOString().slice(0,10));
+        hideLoading();
+        loadTotal(tanggalAktif);
+        loadDetail(tanggalAktif);
+      });
+    }
+    function hapusSemuaConfirm(){
+      const extra=document.getElementById("extra-inputs");
+      extra.innerHTML=`<input type="text" id="conf-user" placeholder="Username"><br>
+                       <input type="password" id="conf-pass" placeholder="Password">`;
+      showConfirm("Hapus SEMUA transaksi?", async ()=>{
+        const u=document.getElementById("conf-user").value;
+        const p=document.getElementById("conf-pass").value;
+        const { data } = await supabase.from("admin").select("*").eq("username",u).eq("password",p).single();
+        if(!data){ alert("Akses ditolak!"); return; }
+        showLoading();
+        await supabase.from("detail").delete().neq("id",""); // hapus semua
+        hideLoading();
+        loadTotal(tanggalAktif);
+        loadDetail(tanggalAktif);
+      });
+    }
+
+    // ========== POPUP KONFIRMASI ==========
+    function showConfirm(text,cb){
+      document.getElementById("confirm-text").innerText=text;
+      document.getElementById("confirm-overlay").style.display="flex";
+      confirmCallback=cb;
+    }
+    function closeConfirm(){
+      document.getElementById("confirm-overlay").style.display="none";
+      document.getElementById("extra-inputs").innerHTML="";
+      confirmCallback=null;
+    }
+    document.getElementById("confirm-yes").addEventListener("click",()=>{
+      if(confirmCallback) confirmCallback();
+      closeConfirm();
+    });
+
+    // ========== STARTUP ==========
+    window.onload=()=>{ document.getElementById("login-overlay").style.display="flex"; }
+  </script>
+</body>
+</html>

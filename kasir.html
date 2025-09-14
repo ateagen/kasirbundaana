@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kasir</title>
+  <style>
+    body { margin:0; font-family:sans-serif; background:#e0f7ff; color:#333; }
+    header { background:#2196f3; color:#fff; padding:10px; text-align:center; font-size:1.2em; }
+    .container { display:flex; flex-wrap:wrap; height:calc(100vh - 50px); }
+    .sidebar, .menu, .order { padding:10px; box-sizing:border-box; overflow:auto; }
+    .sidebar { flex:1; min-width:150px; background:#bbdefb; }
+    .menu { flex:2; min-width:200px; background:#e3f2fd; display:grid; grid-template-columns:repeat(auto-fill, minmax(120px,1fr)); gap:10px; }
+    .order { flex:2; min-width:200px; background:#f1f8ff; display:flex; flex-direction:column; }
+    .btn { display:block; width:100%; padding:8px; margin:5px 0; background:#2196f3; color:#fff; border:none; border-radius:6px; cursor:pointer; font-size:0.9em; }
+    .btn:hover { background:#1976d2; }
+    .card { background:#fff; padding:10px; border-radius:8px; text-align:center; cursor:pointer; box-shadow:0 2px 5px rgba(0,0,0,0.1); }
+    .card:hover { background:#e1f5fe; }
+    .order-list { flex:1; overflow:auto; margin-bottom:10px; }
+    .order-item { display:flex; justify-content:space-between; align-items:center; padding:5px; border-bottom:1px solid #ccc; }
+    .order-item span { font-size:0.9em; }
+    .order-actions { display:flex; justify-content:space-between; gap:5px; }
+    .input { width:100%; padding:6px; margin:4px 0; border:1px solid #ccc; border-radius:6px; }
+    .popup { position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); display:none; align-items:center; justify-content:center; }
+    .popup-content { background:#fff; padding:20px; border-radius:8px; max-width:300px; width:90%; text-align:center; }
+    .spinner { display:none; position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); border:6px solid #ccc; border-top:6px solid #2196f3; border-radius:50%; width:50px; height:50px; animation:spin 1s linear infinite; }
+    @keyframes spin { 100% { transform:translate(-50%,-50%) rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <header>Kasir</header>
+  <div class="container">
+    <!-- Sidebar -->
+    <div class="sidebar">
+      <button class="btn" onclick="filterMenu('Semua')">Semua</button>
+      <button class="btn" onclick="filterMenu('Makanan')">Makanan</button>
+      <button class="btn" onclick="filterMenu('Minuman')">Minuman</button>
+      <button class="btn" onclick="filterMenu('Cemilan')">Cemilan</button>
+      <button class="btn" onclick="openPopup('pengeluaranPopup')">+ Pengeluaran</button>
+      <button class="btn" onclick="logout()">⬅ Kembali</button>
+    </div>
+
+    <!-- Menu -->
+    <div class="menu" id="menuList"></div>
+
+    <!-- Order -->
+    <div class="order">
+      <div class="order-list" id="orderList"></div>
+      <div>
+        <p>Total: Rp <span id="total">0</span></p>
+        <input type="number" id="bayar" class="input" placeholder="Bayar" oninput="hitungKembalian()">
+        <p>Kembalian: Rp <span id="kembalian">0</span></p>
+        <div class="order-actions">
+          <button class="btn" onclick="openPopup('resetPopup')">Reset</button>
+          <button class="btn" onclick="openPopup('bayarPopup')">Bayar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Popup Nama Kasir -->
+  <div class="popup" id="kasirPopup">
+    <div class="popup-content">
+      <h3>Masukkan Nama Kasir</h3>
+      <input type="text" id="kasirInput" class="input" placeholder="Nama Kasir">
+      <button class="btn" onclick="setKasir()">Simpan</button>
+    </div>
+  </div>
+
+  <!-- Popup Pengeluaran -->
+  <div class="popup" id="pengeluaranPopup">
+    <div class="popup-content">
+      <h3>Input Pengeluaran</h3>
+      <input type="text" id="ketPengeluaran" class="input" placeholder="Keterangan">
+      <input type="number" id="jumlahPengeluaran" class="input" placeholder="Jumlah">
+      <input type="number" id="hargaPengeluaran" class="input" placeholder="Harga">
+      <button class="btn" onclick="simpanPengeluaran()">Simpan</button>
+      <button class="btn" onclick="closePopup('pengeluaranPopup')">Batal</button>
+    </div>
+  </div>
+
+  <!-- Popup Reset -->
+  <div class="popup" id="resetPopup">
+    <div class="popup-content">
+      <p>Yakin reset semua pesanan?</p>
+      <button class="btn" onclick="resetPesanan()">Ya</button>
+      <button class="btn" onclick="closePopup('resetPopup')">Batal</button>
+    </div>
+  </div>
+
+  <!-- Popup Bayar -->
+  <div class="popup" id="bayarPopup">
+    <div class="popup-content">
+      <p>Yakin simpan & cetak struk?</p>
+      <button class="btn" onclick="simpanTransaksi()">Ya</button>
+      <button class="btn" onclick="closePopup('bayarPopup')">Batal</button>
+    </div>
+  </div>
+
+  <!-- Spinner -->
+  <div class="spinner" id="spinner"></div>
+
+  <!-- Supabase -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script>
+    const SUPABASE_URL = "https://xfountfixucihehzirzw.supabase.co";
+    const SUPABASE_ANON_KEY = "sb_publishable_7CQf_hkoibC_I0lcBCe01Q_xF9XPpTZ";
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    let kasir = localStorage.getItem("kasir") || "";
+    let allMenu = [];
+    let filter = "Semua";
+    let pesanan = [];
+
+    // Init
+    document.addEventListener("DOMContentLoaded", async () => {
+      if (!kasir) openPopup('kasirPopup');
+      await loadMenu();
+    });
+
+    // Nama Kasir
+    function setKasir() {
+      const nama = document.getElementById("kasirInput").value.trim();
+      if (nama) {
+        localStorage.setItem("kasir", nama);
+        kasir = nama;
+        closePopup("kasirPopup");
+      }
+    }
+
+    function logout() {
+      localStorage.removeItem("kasir");
+      window.location.href = "index.html"; // kembali ke index
+    }
+
+    // Load Menu
+    async function loadMenu() {
+      showSpinner(true);
+      const { data, error } = await supabase.from('menu').select('*');
+      if (!error) {
+        allMenu = data;
+        renderMenu();
+      }
+      showSpinner(false);
+    }
+
+    function renderMenu() {
+      const menuList = document.getElementById("menuList");
+      menuList.innerHTML = "";
+      allMenu
+        .filter(m => filter === "Semua" || m.kategori === filter)
+        .forEach(m => {
+          const card = document.createElement("div");
+          card.className = "card";
+          card.innerHTML = `<b>${m.nama}</b><br>Rp ${m.harga}`;
+          card.onclick = () => tambahPesanan(m);
+          menuList.appendChild(card);
+        });
+    }
+
+    function filterMenu(kat) {
+      filter = kat;
+      renderMenu();
+    }
+
+    // Pesanan
+    function tambahPesanan(menu) {
+      const item = pesanan.find(p => p.nama === menu.nama);
+      if (item) item.jumlah++;
+      else pesanan.push({ nama: menu.nama, harga: menu.harga, jumlah:1 });
+      renderPesanan();
+    }
+
+    function renderPesanan() {
+      const list = document.getElementById("orderList");
+      list.innerHTML = "";
+      let total = 0;
+      pesanan.forEach((p,i) => {
+        total += p.harga * p.jumlah;
+        const row = document.createElement("div");
+        row.className = "order-item";
+        row.innerHTML = `
+          <span>${p.nama} x${p.jumlah} - Rp ${p.harga*p.jumlah}</span>
+          <button class="btn" onclick="hapusItem(${i})">❌</button>
+        `;
+        list.appendChild(row);
+      });
+      document.getElementById("total").innerText = total;
+      hitungKembalian();
+    }
+
+    function hapusItem(i) {
+      pesanan.splice(i,1);
+      renderPesanan();
+    }
+
+    function resetPesanan() {
+      pesanan = [];
+      renderPesanan();
+      closePopup("resetPopup");
+    }
+
+    // Bayar
+    function hitungKembalian() {
+      const bayar = parseInt(document.getElementById("bayar").value) || 0;
+      const total = parseInt(document.getElementById("total").innerText) || 0;
+      document.getElementById("kembalian").innerText = bayar - total;
+    }
+
+    async function simpanTransaksi() {
+      if (pesanan.length === 0) return;
+      showSpinner(true);
+      let total = 0;
+      for (let p of pesanan) {
+        total += p.harga * p.jumlah;
+        await supabase.from('detail').insert([
+          { kasir, menu:p.nama, jumlah:p.jumlah, harga:p.harga, jenis:'jual' }
+        ]);
+      }
+      cetakStruk(pesanan, total);
+      resetPesanan();
+      document.getElementById("bayar").value = "";
+      document.getElementById("kembalian").innerText = "0";
+      closePopup("bayarPopup");
+      showSpinner(false);
+    }
+
+    // Pengeluaran
+    async function simpanPengeluaran() {
+      const ket = document.getElementById("ketPengeluaran").value;
+      const jumlah = parseInt(document.getElementById("jumlahPengeluaran").value);
+      const harga = parseInt(document.getElementById("hargaPengeluaran").value);
+      if (!ket || !jumlah || !harga) return;
+      showSpinner(true);
+      await supabase.from('detail').insert([
+        { kasir, menu:ket, jumlah, harga, jenis:'pengeluaran' }
+      ]);
+      closePopup("pengeluaranPopup");
+      showSpinner(false);
+      alert("Pengeluaran tersimpan!");
+    }
+
+    // Cetak Struk
+    function cetakStruk(pesanan, total) {
+      const win = window.open('', '_blank', 'width=300,height=600');
+      const now = new Date().toLocaleString("id-ID");
+      const resto = "Kasir Bunda Ana";
+      let html = `
+        <html><head><style>
+          @page { size:58mm auto; margin:0; }
+          body { font-family: monospace; font-size:12px; }
+          .center { text-align:center; }
+          .line { border-top:1px dashed #000; margin:4px 0; }
+        </style></head><body>
+        <div class="center"><b>${resto}</b></div>
+        <div class="center">${now}</div>
+        <div class="line"></div>
+      `;
+      pesanan.forEach(p => {
+        html += `<div>${p.nama} x${p.jumlah} .... Rp ${p.harga*p.jumlah}</div>`;
+      });
+      html += `
+        <div class="line"></div>
+        <div>Total: Rp ${total}</div>
+        <div class="center">-- Terima Kasih --</div>
+        </body></html>`;
+      win.document.write(html);
+      win.document.close();
+      win.print();
+      win.close();
+    }
+
+    // Popup
+    function openPopup(id) { document.getElementById(id).style.display="flex"; }
+    function closePopup(id) { document.getElementById(id).style.display="none"; }
+
+    // Spinner
+    function showSpinner(show) {
+      document.getElementById("spinner").style.display = show ? "block" : "none";
+    }
+
+    // Back Device → logout
+    window.onpopstate = () => logout();
+  </script>
+</body>
+</html>

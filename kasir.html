@@ -107,10 +107,21 @@
     const SUPABASE_ANON_KEY = "sb_publishable_7CQf_hkoibC_I0lcBCe01Q_xF9XPpTZ";
     const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-    let kasir = localStorage.getItem("kasir") || "";
+    // pakai sessionStorage (bukan localStorage)
+    let kasir = sessionStorage.getItem("kasir") || "";
     let allMenu = [];
     let filter = "Semua";
     let pesanan = [];
+
+    // cek apakah refresh atau bukan
+    const navEntries = performance.getEntriesByType("navigation");
+    const isReload = navEntries.length && navEntries[0].type === "reload";
+
+    // kalau buka baru (bukan refresh), hapus session lama
+    if (!isReload) {
+      sessionStorage.removeItem("kasir");
+      kasir = "";
+    }
 
     // Init
     document.addEventListener("DOMContentLoaded", async () => {
@@ -122,14 +133,14 @@
     function setKasir() {
       const nama = document.getElementById("kasirInput").value.trim();
       if (nama) {
-        localStorage.setItem("kasir", nama);
+        sessionStorage.setItem("kasir", nama);
         kasir = nama;
         closePopup("kasirPopup");
       }
     }
 
     function logout() {
-      localStorage.removeItem("kasir");
+      sessionStorage.removeItem("kasir");
       window.location.href = "index.html"; // kembali ke index
     }
 

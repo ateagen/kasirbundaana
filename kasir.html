@@ -8,6 +8,7 @@
     body { margin:0; font-family:sans-serif; background:#e0f7ff; color:#333; }
     header { background:#2196f3; color:#fff; padding:10px; text-align:center; font-size:1.2em; }
     .container { display:flex; flex-wrap:wrap; height:calc(100vh - 50px); }
+
     .sidebar, .menu, .order { padding:10px; box-sizing:border-box; overflow:auto; }
     .sidebar { flex:1; min-width:150px; background:#bbdefb; }
     .menu { flex:2; min-width:200px; background:#e3f2fd; display:grid; grid-template-columns:repeat(auto-fill, minmax(120px,1fr)); gap:10px; }
@@ -107,29 +108,23 @@
     const SUPABASE_ANON_KEY = "sb_publishable_7CQf_hkoibC_I0lcBCe01Q_xF9XPpTZ";
     const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-    // pakai sessionStorage (bukan localStorage)
     let kasir = sessionStorage.getItem("kasir") || "";
     let allMenu = [];
     let filter = "Semua";
     let pesanan = [];
 
-    // cek apakah refresh atau bukan
     const navEntries = performance.getEntriesByType("navigation");
     const isReload = navEntries.length && navEntries[0].type === "reload";
-
-    // kalau buka baru (bukan refresh), hapus session lama
     if (!isReload) {
       sessionStorage.removeItem("kasir");
       kasir = "";
     }
 
-    // Init
     document.addEventListener("DOMContentLoaded", async () => {
       if (!kasir) openPopup('kasirPopup');
       await loadMenu();
     });
 
-    // Nama Kasir
     function setKasir() {
       const nama = document.getElementById("kasirInput").value.trim();
       if (nama) {
@@ -141,10 +136,9 @@
 
     function logout() {
       sessionStorage.removeItem("kasir");
-      window.location.href = "index.html"; // kembali ke index
+      window.location.href = "index.html";
     }
 
-    // Load Menu
     async function loadMenu() {
       showSpinner(true);
       const { data, error } = await supabase.from('menu').select('*');
@@ -174,7 +168,6 @@
       renderMenu();
     }
 
-    // Pesanan
     function tambahPesanan(menu) {
       const item = pesanan.find(p => p.nama === menu.nama);
       if (item) item.jumlah++;
@@ -211,7 +204,6 @@
       closePopup("resetPopup");
     }
 
-    // Bayar
     function hitungKembalian() {
       const bayar = parseInt(document.getElementById("bayar").value) || 0;
       const total = parseInt(document.getElementById("total").innerText) || 0;
@@ -236,7 +228,6 @@
       showSpinner(false);
     }
 
-    // Pengeluaran
     async function simpanPengeluaran() {
       const ket = document.getElementById("ketPengeluaran").value;
       const jumlah = parseInt(document.getElementById("jumlahPengeluaran").value);
@@ -251,46 +242,37 @@
       alert("Pengeluaran tersimpan!");
     }
 
-    // Cetak Struk
+    // === MODIFIKASI CETAK STRUK KE RAWBT ===
     function cetakStruk(pesanan, total) {
-      const win = window.open('', '_blank', 'width=300,height=600');
-      const now = new Date().toLocaleString("id-ID");
       const resto = "Kasir Bunda Ana";
-      let html = `
-        <html><head><style>
-          @page { size:58mm auto; margin:0; }
-          body { font-family: monospace; font-size:12px; }
-          .center { text-align:center; }
-          .line { border-top:1px dashed #000; margin:4px 0; }
-        </style></head><body>
-        <div class="center"><b>${resto}</b></div>
-        <div class="center">${now}</div>
-        <div class="line"></div>
-      `;
-      pesanan.forEach(p => {
-        html += `<div>${p.nama} x${p.jumlah} .... Rp ${p.harga*p.jumlah}</div>`;
-      });
-      html += `
-        <div class="line"></div>
-        <div>Total: Rp ${total}</div>
-        <div class="center">-- Terima Kasih --</div>
-        </body></html>`;
-      win.document.write(html);
-      win.document.close();
-      win.print();
-      win.close();
-    }
+      const now = new Date().toLocaleString("id-ID");
 
-    // Popup
+      let struk = resto + "\n";
+      struk += now + "\n";
+      struk += "-------------------------\n";
+
+      pesanan.forEach(p => {
+        struk += `${p.nama} x${p.jumlah} .... Rp ${p.harga * p.jumlah}\n`;
+      });
+
+      struk += "-------------------------\n";
+      struk += `Total: Rp ${total}\n\n`;
+      struk += "-- Terima Kasih --\n";
+
+      const url = "intent:" + encodeURIComponent(struk) +
+        "#Intent;scheme=rawbt;package=ru.a402d.rawbtprinter;end;";
+
+      window.location.href = url;
+    }
+    // === END MODIFIKASI ===
+
     function openPopup(id) { document.getElementById(id).style.display="flex"; }
     function closePopup(id) { document.getElementById(id).style.display="none"; }
 
-    // Spinner
     function showSpinner(show) {
       document.getElementById("spinner").style.display = show ? "block" : "none";
     }
 
-    // Back Device → logout
     window.onpopstate = () => logout();
   </script>
 </body>

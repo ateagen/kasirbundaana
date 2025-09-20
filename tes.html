@@ -31,11 +31,12 @@
       struk += `Total: Rp ${total}\n\n`;
       struk += "-- Terima Kasih --\n";
 
-      // Encode string untuk RawBT
-      const url = "intent:" + encodeURIComponent(struk) +
-        "#Intent;scheme=rawbt;package=ru.a402d.rawbtprinter;end;";
-
-      // Kirim ke RawBT
+      // Intent untuk RawBT (format benar)
+      const url = "intent://print/#Intent;" +
+                  "scheme=rawbt;" +
+                  "package=ru.a402d.rawbtprinter;" +
+                  "S.text=" + encodeURIComponent(struk) + ";" +
+                  "end;";
       window.location.href = url;
     }
 
